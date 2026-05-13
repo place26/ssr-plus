@@ -18,7 +18,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential libncurses-dev zlib1g-dev gawk git \
             gettext libssl-dev xsltproc rsync wget unzip python3 python3-distutils file
-          # OpenWrt SDK requires 'python' command
           sudo ln -sf /usr/bin/python3 /usr/local/bin/python
 
       - name: Cache SDK
@@ -26,12 +25,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: openwrt-sdk
-          key: sdk-${{ matrix.arch }}-v5
+          key: sdk-${{ matrix.arch }}-v6
 
       - name: Download & extract SDK
         if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
-          wget -q -O sdk.tar.xz "https://downloads.openwrt.org/releases/21.02.3/targets/mvebu/cortexa53/openwrt-sdk-21.02.3-mvebu-cortexa53_gcc-8.4.0_musl.Linux-x86_64.tar.xz"
+          wget -q -O sdk.tar.xz "https://downloads.openwrt.org/releases/22.03.7/targets/mvebu/cortexa53/openwrt-sdk-22.03.7-mvebu-cortexa53_gcc-11.2.0_musl.Linux-x86_64.tar.xz"
           tar xf sdk.tar.xz
           mv openwrt-sdk-* openwrt-sdk
           rm sdk.tar.xz
@@ -48,7 +47,7 @@ jobs:
           cd openwrt-sdk
           cat >> .config << 'CONFIGEOF'
           CONFIG_PACKAGE_luci-app-ssr-plus=y
-          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Kcptun=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Kcptun=n
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_NaiveProxy=y
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_RedSocks2=y
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Libev_Client=y
@@ -66,21 +65,15 @@ jobs:
           CONFIGEOF
           make defconfig
 
-      - name: Build packages
+      - name: Build SSR-Plus
         run: |
           cd openwrt-sdk
-          make -j$(nproc) V=s 2>&1 | tee build.log
+          make package/luci-app-ssr-plus/compile -j$(nproc) V=s 2>&1 | tee build.log
           echo "=== Build completed ==="
 
       - name: Collect .ipk files
         run: |
           mkdir -p output
-          find openwrt-sdk/bin -name "*.ipk" -exec cp {} output/ \;
-          echo "=== Built packages ==="
+          find openwrt-sdk/bin -name "*.ipk" -newer openwrt-sdk/build.log -exec cp {} output/ \;
+          echo "=== Built packages ($(ls output/ | wc -l) total) ==="
           ls -lh output/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssr-plus-${{ matrix.arch }}
-          path: output/
