@@ -1,0 +1,84 @@
+name: Build SSR-Plus
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        arch: [aarch64_cortex-a53]
+
+    steps:
+      - name: Install deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential libncurses-dev zlib1g-dev gawk git \
+            gettext libssl-dev xsltproc rsync wget unzip python3 file
+
+      - name: Cache SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: openwrt-sdk
+          key: sdk-${{ matrix.arch }}-v3
+
+      - name: Download & extract SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        run: |
+          wget -q -O sdk.tar.xz "https://downloads.openwrt.org/releases/21.02.3/targets/mvebu/cortexa53/openwrt-sdk-21.02.3-mvebu-cortexa53_gcc-8.4.0_musl.Linux-x86_64.tar.xz"
+          tar xf sdk.tar.xz
+          mv openwrt-sdk-* openwrt-sdk
+          rm sdk.tar.xz
+
+      - name: Setup feeds
+        run: |
+          cd openwrt-sdk
+          echo "src-git helloworld https://github.com/fw876/helloworld.git;master" >> feeds.conf.default
+          ./scripts/feeds update -a 2>&1 | tail -5
+          ./scripts/feeds install -a 2>&1 | tail -10
+
+      - name: Configure build
+        run: |
+          cd openwrt-sdk
+          cat >> .config << 'CONFIGEOF'
+          CONFIG_PACKAGE_luci-app-ssr-plus=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Kcptun=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_NaiveProxy=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_RedSocks2=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Libev_Client=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Libev_Server=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Rust_Client=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Rust_Server=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Libev_Client=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Libev_Server=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Simple_Obfs=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Trojan=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_V2ray_Plugin=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Xray=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_TUIC=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Hysteria=y
+          CONFIGEOF
+          make defconfig
+
+      - name: Build packages
+        run: |
+          cd openwrt-sdk
+          make -j$(nproc) V=s 2>&1 | tee build.log
+          echo "=== Build completed ==="
+
+      - name: Collect .ipk files
+        run: |
+          mkdir -p output
+          find openwrt-sdk/bin -name "*.ipk" -exec cp {} output/ \;
+          echo "=== Built packages ==="
+          ls -lh output/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssr-plus-${{ matrix.arch }}
+          path: output/
