@@ -17,14 +17,16 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential libncurses-dev zlib1g-dev gawk git \
-            gettext libssl-dev xsltproc rsync wget unzip python3 file
+            gettext libssl-dev xsltproc rsync wget unzip python3 python3-setuptools file
+          # OpenWrt SDK requires 'python' command
+          sudo ln -sf /usr/bin/python3 /usr/bin/python
 
       - name: Cache SDK
         id: cache-sdk
         uses: actions/cache@v4
         with:
           path: openwrt-sdk
-          key: sdk-${{ matrix.arch }}-v3
+          key: sdk-${{ matrix.arch }}-v4
 
       - name: Download & extract SDK
         if: steps.cache-sdk.outputs.cache-hit != 'true'
